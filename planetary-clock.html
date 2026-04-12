@@ -1,17 +1,26 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Planetary Altitude Clock</title>
+  <title>Planetary Clock</title>
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; background: #111; color: #eee; }
-    canvas { border: 2px solid #444; background: #000; border-radius: 50%; }
-    pre { margin: 20px auto; max-width: 400px; text-align: left; font-size: 16px; background: #222; padding: 10px; border-radius: 8px; }
+    body { font-family: Arial, sans-serif; background: #f8f8f8; text-align: center; margin: 0; padding: 20px; }
+    h1 { margin-bottom: 10px; }
+    .controls { margin: 20px 0; }
+    input, button { padding: 10px; font-size: 16px; margin: 5px; }
+    canvas { background: white; border: 4px solid #222; border-radius: 50%; box-shadow: 0 6px 25px rgba(0,0,0,0.2); }
   </style>
 </head>
 <body>
-  <h2>Planetary Altitude Clock — 9 AM San Francisco (April 12, 2026)</h2>
-  <canvas id="clock" width="600" height="600"></canvas>
-  <pre id="output">Loading...</pre>
+  <h1>Planetary Clock</h1>
+  
+  <div class="controls">
+    <input type="date" id="dateInput" value="2026-04-12">
+    <input type="time" id="timeInput" value="10:00">
+    <button onclick="setToNow()">Now</button>
+    <button onclick="updateChart()">Update Chart</button>
+  </div>
+
+  <canvas id="chart" width="640" height="640"></canvas>
 
   <script type="module">
     import SwissEph from 'https://cdn.jsdelivr.net/gh/prolaxu/swisseph-wasm@main/src/swisseph.js';
@@ -26,63 +35,85 @@
       { name: 'Saturn',  id: 6, color: '#ffeb3b' }
     ];
 
-    async function run() {
+    const OMAK_LON = -119.53;
+    const OMAK_LAT = 48.41;
+
+    async function updateChart() {
+      const dateStr = document.getElementById('dateInput').value;
+      const timeStr = document.getElementById('timeInput').value || "10:00";
+
+      const d = new Date(`${dateStr}T${timeStr}`);
+      const year = d.getFullYear();
+      const month = d.getMonth() + 1;
+      const day = d.getDate();
+      const hour = d.getHours() + d.getMinutes() / 60;
+
       const swe = new SwissEph();
       await swe.initSwissEph();
 
-      const jd = swe.julday(2026, 4, 12, 9.0);
-      const geopos = [-122.4, 37.8, 10];
-      const output = document.getElementById('output');
-      let text = '';
+      const jd = swe.julday(year, month, day, hour);
+      const geopos = [OMAK_LON, OMAK_LAT, 0];
 
-      const canvas = document.getElementById('clock');
+      const canvas = document.getElementById('chart');
       const ctx = canvas.getContext('2d');
-      const cx = 300, cy = 300, radius = 250;
+      const cx = 320, cy = 320, radius = 280;
 
-      // Background circle
-      ctx.strokeStyle = '#333';
-      ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.stroke();
+      // White background + circles
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, 640, 640);
 
-      // Horizon line
-      ctx.strokeStyle = '#555';
-      ctx.beginPath(); ctx.moveTo(cx - radius, cy); ctx.lineTo(cx + radius, cy); ctx.stroke();
+      ctx.strokeStyle = '#222';
+      ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.stroke();   // outer
+
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#666';
+      ctx.beginPath(); ctx.moveTo(cx - radius, cy); ctx.lineTo(cx + radius, cy); ctx.stroke(); // horizon
 
       for (const p of planets) {
         const pos = swe.calc_ut(jd, p.id, swe.SEFLG_SWIEPH);
         const xaz = swe.azalt(jd, swe.SE_ECL2HOR, geopos, 0, 15, pos);
 
-        const azimuth = xaz.azimuth || 0;           // left-right (0° = North, 90° = East)
-        const alt = xaz.apparentAltitude || xaz.trueAltitude || 0;
+        const azimuth = xaz.azimuth !== undefined ? xaz.azimuth : (xaz[0] || 0);
+        const altitude = xaz.apparentAltitude !== undefined ? xaz.apparentAltitude : (xaz[2] || xaz[1] || 0);
 
-        text += `${p.name.padEnd(9)} : ${alt.toFixed(1)}°\n`;
+        // Position: azimuth for angle, altitude for distance from center
+        const dist = radius * (90 - Math.max(-10, Math.min(90, altitude))) / 180;
+        const rad = (azimuth * Math.PI) / 180;
+        const x = cx + dist * Math.sin(rad);
+        const y = cy - dist * Math.cos(rad);   // North = top
 
-        // Map altitude to distance from center (90° = center, -90° = edge)
-        const dist = radius * (90 - alt) / 180;
-
-        const rad = azimuth * Math.PI / 180;
-        const px = cx + dist * Math.sin(rad);
-        const py = cy - dist * Math.cos(rad);   // -cos so North is at top
-
-        // Draw planet
+        // Planet dot
         ctx.fillStyle = p.color;
-        ctx.shadowBlur = 12;
+        ctx.shadowBlur = 18;
         ctx.shadowColor = p.color;
-        ctx.beginPath(); ctx.arc(px, py, 10, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x, y, 12, 0, Math.PI * 2);
+        ctx.fill();
         ctx.shadowBlur = 0;
 
         // Label
-        ctx.fillStyle = '#fff';
-        ctx.font = '14px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(p.name, px, py + 28);
+        ctx.fillStyle = '#111';
+        ctx.font = 'bold 15px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText(p.name, x + 20, y + 6);
       }
 
-      output.textContent = text;
       swe.close();
     }
 
-    run().catch(err => document.getElementById('output').textContent = 'Error: ' + err.message);
+    function setToNow() {
+      const now = new Date();
+      document.getElementById('dateInput').value = now.toISOString().slice(0, 10);
+      document.getElementById('timeInput').value = now.getHours().toString().padStart(2, '0') + ':' + 
+                                                   now.getMinutes().toString().padStart(2, '0');
+      updateChart();
+    }
+
+    // Initial draw
+    window.onload = () => {
+      updateChart();
+    };
   </script>
 </body>
 </html>
