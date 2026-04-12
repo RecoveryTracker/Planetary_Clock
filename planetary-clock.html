@@ -3,116 +3,434 @@
 <head>
   <title>Planetary Clock</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #f8f8f8; text-align: center; margin: 0; padding: 20px; }
+    body { 
+      font-family: Arial, sans-serif; 
+      background: #f8f8f8; 
+      text-align: center; 
+      margin: 0; 
+      padding: 20px; 
+    }
     h1 { margin-bottom: 10px; }
     .controls { margin: 20px 0; }
     input, button { padding: 10px; font-size: 16px; margin: 5px; }
-    canvas { background: white; border: 4px solid #222; border-radius: 50%; box-shadow: 0 6px 25px rgba(0,0,0,0.2); }
+    canvas { 
+      background: white; 
+      border: 4px solid transparent; 
+      border-radius: 50%; 
+      box-shadow: 0 6px 25px rgba(0,0,0,0.2); 
+    }
+    .note { font-size: 14px; color: #555; margin: 10px 0; }
   </style>
 </head>
 <body>
   <h1>Planetary Clock</h1>
   
   <div class="controls">
+    <label>Timezone:
+      <select id="tzSelect"></select>
+    </label>
+    <label>Hemisphere:
+      <select id="hemisphereInput">
+        <option value="north">Northern</option>
+        <option value="south">Southern</option>
+      </select>
+    </label>
+    <!-- solar time removed; always use selected timezone or city timezone -->
     <input type="date" id="dateInput" value="2026-04-12">
-    <input type="time" id="timeInput" value="10:00">
+    <input type="time" id="timeInput" value="11:05">
     <button onclick="setToNow()">Now</button>
     <button onclick="updateChart()">Update Chart</button>
   </div>
-
   <canvas id="chart" width="640" height="640"></canvas>
 
   <script type="module">
     import SwissEph from 'https://cdn.jsdelivr.net/gh/prolaxu/swisseph-wasm@main/src/swisseph.js';
 
     const planets = [
-      { name: 'Sun',     id: 0, color: '#ffeb3b' },
-      { name: 'Moon',    id: 1, color: '#e0e0e0' },
-      { name: 'Mercury', id: 2, color: '#9e9e9e' },
-      { name: 'Venus',   id: 3, color: '#ff9800' },
-      { name: 'Mars',    id: 4, color: '#f44336' },
-      { name: 'Jupiter', id: 5, color: '#4caf50' },
-      { name: 'Saturn',  id: 6, color: '#ffeb3b' }
+      { name: 'Sun',      id: 0, color: '#ffeb3b' },
+      { name: 'Moon',     id: 1, color: '#e0e0e0' },
+      { name: 'Mercury',  id: 2, color: '#9e9e9e' },
+      { name: 'Venus',    id: 3, color: '#ffb347' },
+      { name: 'Mars',     id: 4, color: '#f44336' },
+      { name: 'Jupiter',  id: 5, color: '#ff9800' },
+      { name: 'Saturn',   id: 6, color: '#d4af37' },
+      { name: 'Uranus',   id: 7, color: '#00bcd4' },
+      { name: 'Neptune',  id: 8, color: '#2196f3' },
+      { name: 'Pluto',    id: 9, color: '#9c27b0' },
+      { name: 'Chiron',   id: 15, color: '#8e44ad' },
+      { name: 'Ceres',    id: 17, color: '#b5855f' },
+      { name: 'Pallas',   id: 18, color: '#4db6ac' },
+      { name: 'Juno',     id: 19, color: '#f06292' },
+      { name: 'Vesta',    id: 20, color: '#f5f5f5' },
+      { name: 'Halley',   id: 1001, color: '#4aa3ff', comet: true }
     ];
 
-    const OMAK_LON = -119.53;
-    const OMAK_LAT = 48.41;
+    // Timezone definitions: each gives a representative latitude and hemisphere
+    // so selecting a timezone will automatically set longitude (central meridian)
+    // and a default latitude used to determine hemisphere/orientation.
+    let currentLat = 45; // default representative latitude for northern zones
 
-    async function updateChart() {
-      const dateStr = document.getElementById('dateInput').value;
-      const timeStr = document.getElementById('timeInput').value || "10:00";
+    const dstTimezoneMap = {
+      '-9': 'America/Anchorage',
+      '-8': 'America/Los_Angeles',
+      '-7': 'America/Denver',
+      '-6': 'America/Chicago',
+      '-5': 'America/New_York',
+      '-4': 'America/Halifax',
+      '10': 'Australia/Sydney'
+    };
 
-      const d = new Date(`${dateStr}T${timeStr}`);
-      const year = d.getFullYear();
-      const month = d.getMonth() + 1;
-      const day = d.getDate();
-      const hour = d.getHours() + d.getMinutes() / 60;
-
-      const swe = new SwissEph();
-      await swe.initSwissEph();
-
-      const jd = swe.julday(year, month, day, hour);
-      const geopos = [OMAK_LON, OMAK_LAT, 0];
-
-      const canvas = document.getElementById('chart');
-      const ctx = canvas.getContext('2d');
-      const cx = 320, cy = 320, radius = 280;
-
-      // White background + circles
-      ctx.fillStyle = 'white';
-      ctx.fillRect(0, 0, 640, 640);
-
-      ctx.strokeStyle = '#222';
-      ctx.lineWidth = 5;
-      ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.stroke();   // outer
-
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#666';
-      ctx.beginPath(); ctx.moveTo(cx - radius, cy); ctx.lineTo(cx + radius, cy); ctx.stroke(); // horizon
-
-      for (const p of planets) {
-        const pos = swe.calc_ut(jd, p.id, swe.SEFLG_SWIEPH);
-        const xaz = swe.azalt(jd, swe.SE_ECL2HOR, geopos, 0, 15, pos);
-
-        const azimuth = xaz.azimuth !== undefined ? xaz.azimuth : (xaz[0] || 0);
-        const altitude = xaz.apparentAltitude !== undefined ? xaz.apparentAltitude : (xaz[2] || xaz[1] || 0);
-
-        // Position: azimuth for angle, altitude for distance from center
-        const dist = radius * (90 - Math.max(-10, Math.min(90, altitude))) / 180;
-        const rad = (azimuth * Math.PI) / 180;
-        const x = cx + dist * Math.sin(rad);
-        const y = cy - dist * Math.cos(rad);   // North = top
-
-        // Planet dot
-        ctx.fillStyle = p.color;
-        ctx.shadowBlur = 18;
-        ctx.shadowColor = p.color;
-        ctx.beginPath();
-        ctx.arc(x, y, 12, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-
-        // Label
-        ctx.fillStyle = '#111';
-        ctx.font = 'bold 15px Arial';
-        ctx.textAlign = 'left';
-        ctx.fillText(p.name, x + 20, y + 6);
+    function getEffectiveOffset(date = new Date()) {
+      const tzSelect = document.getElementById('tzSelect');
+      const selected = tzSelect && tzSelect.selectedOptions[0];
+      if (!selected) return -7;
+      const zoneName = selected.dataset.timezone;
+      if (!zoneName) {
+        const value = Number(selected.value);
+        return Number.isFinite(value) ? value : -7;
       }
 
-      swe.close();
+      try {
+        const parts = new Intl.DateTimeFormat('en-US', {
+          timeZone: zoneName,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+        }).formatToParts(date).reduce((acc, part) => {
+          if (part.type !== 'literal') acc[part.type] = part.value;
+          return acc;
+        }, {});
+
+        const localUtcMs = Date.UTC(
+          Number(parts.year),
+          Number(parts.month) - 1,
+          Number(parts.day),
+          Number(parts.hour),
+          Number(parts.minute),
+          Number(parts.second)
+        );
+
+        return (localUtcMs - date.getTime()) / (60 * 60 * 1000);
+      } catch (err) {
+        const value = Number(selected.value);
+        return Number.isFinite(value) ? value : -7;
+      }
+    }
+
+    async function updateChart() {
+      try {
+        const dateStr = document.getElementById('dateInput').value;
+        const timeStr = document.getElementById('timeInput').value || "11:05";
+
+        if (!dateStr) {
+          alert('Please enter a date');
+          return;
+        }
+
+        // Parse date/time and convert to UTC. Optionally use solar time (based on longitude).
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const [hh, mm] = (timeStr.split(':').map(Number)).concat([0]);
+
+        // Always use the chosen timezone offset (from timezone select)
+        const tzValue = Number(document.getElementById('tzSelect').value);
+        const tzOffset = Number.isFinite(tzValue) ? tzValue : -7; // hours from UTC
+        const utcMs = Date.UTC(y, m - 1, d, hh - tzOffset, mm || 0, 0);
+        const utcDate = new Date(utcMs);
+
+        const year = utcDate.getUTCFullYear();
+        const month = utcDate.getUTCMonth() + 1;
+        const day = utcDate.getUTCDate();
+        const hour = utcDate.getUTCHours() + utcDate.getUTCMinutes() / 60;
+
+        const swe = new SwissEph();
+        await swe.initSwissEph();
+
+        const jd = swe.julday(year, month, day, hour);
+
+        // Use timezone central meridian and currentLat (set when timezone changes)
+        const tzLon = tzOffset * 15;
+        const lon = tzLon;
+        const lat = currentLat;
+        const placeNameEl = document.getElementById('placeName');
+        if (placeNameEl) {
+          placeNameEl.textContent = document.getElementById('tzSelect').selectedOptions[0].textContent || '';
+        }
+        const geopos = [lon, lat, 0];
+
+        const canvas = document.getElementById('chart');
+        const ctx = canvas.getContext('2d');
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        const rimWidth = 5;
+        const radius = cx - rimWidth / 2;
+
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Single outer circle (ecliptic / horizon rim) flush with the canvas edge
+        ctx.strokeStyle = '#222';
+        ctx.lineWidth = rimWidth;
+        ctx.beginPath(); 
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2); 
+        ctx.stroke();
+
+        const placedLabels = [];
+        function rectsOverlap(a, b) {
+          return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+        }
+        function makeLabelRect(x, y, w, h, align, baseline) {
+          const padding = 4;
+          let left = x;
+          if (align === 'center') left = x - w / 2 - padding;
+          else if (align === 'right') left = x - w - padding * 2;
+          else left = x - padding;
+
+          let top = y;
+          if (baseline === 'middle') top = y - h / 2 - padding;
+          else if (baseline === 'bottom') top = y - h - padding * 2;
+          else top = y - padding;
+
+          return { left, top, right: left + w + padding * 2, bottom: top + h + padding * 2 };
+        }
+
+        for (const p of planets) {
+          let pos;
+          try {
+            pos = swe.calc_ut(jd, p.id, swe.SEFLG_SWIEPH);
+          } catch (err) {
+            console.warn('Skipping body because position could not be calculated:', p.name, err);
+            continue;
+          }
+
+          const xaz = swe.azalt(jd, swe.SE_ECL2HOR, geopos, 0, 15, pos);
+          let azimuth = xaz.azimuth !== undefined ? xaz.azimuth : (xaz[0] || 0);
+
+          // Keep planets inside the outer rim while leaving room for labels
+          const dist = radius - 85;
+
+          // Angle: South at top by default. Flip orientation for Northern hemisphere.
+          let angleDeg = azimuth + 180; // South = 0° at top
+          const hemisphere = (document.getElementById('hemisphereInput') || {}).value || 'north';
+          if (hemisphere === 'north') angleDeg = -angleDeg;
+          const angle = angleDeg * Math.PI / 180;
+
+          const x = cx + dist * Math.sin(angle);
+          const y = cy + dist * Math.cos(angle);
+
+          const markerRadius = 7;
+          ctx.font = 'bold 13px Arial';
+          const labelText = p.name;
+          const textWidth = ctx.measureText(labelText).width;
+          const textHeight = 16;
+
+          let labelOffset = 32;
+          const minLabelOffset = 12;
+          const maxLabelOffset = Math.max(32, radius - dist - 20);
+          let lx = x + labelOffset * Math.sin(angle);
+          let ly = y + labelOffset * Math.cos(angle);
+          let textAlign = Math.abs(Math.sin(angle)) > 0.3 ? (Math.sin(angle) > 0 ? 'left' : 'right') : 'center';
+          let textBaseline = Math.cos(angle) > 0 ? 'top' : 'bottom';
+          let labelRect = makeLabelRect(lx, ly, textWidth, textHeight, textAlign, textBaseline);
+
+          function rectOutsideCircle(rect) {
+            const corners = [
+              { x: rect.left, y: rect.top },
+              { x: rect.right, y: rect.top },
+              { x: rect.left, y: rect.bottom },
+              { x: rect.right, y: rect.bottom }
+            ];
+            return corners.some(c => {
+              const dx = c.x - cx;
+              const dy = c.y - cy;
+              return Math.sqrt(dx * dx + dy * dy) > radius - rimWidth / 2 - 2;
+            });
+          }
+
+          let attempts = 0;
+          while (true) {
+            const overlaps = placedLabels.some(other => rectsOverlap(other, labelRect));
+            const outside = rectOutsideCircle(labelRect);
+            if (!overlaps && !outside) break;
+
+            if (outside && labelOffset > minLabelOffset) {
+              labelOffset = Math.max(minLabelOffset, labelOffset - 8);
+            } else if (overlaps && labelOffset < maxLabelOffset) {
+              labelOffset = Math.min(maxLabelOffset, labelOffset + 16);
+            } else {
+              break;
+            }
+
+            lx = x + labelOffset * Math.sin(angle);
+            ly = y + labelOffset * Math.cos(angle);
+            labelRect = makeLabelRect(lx, ly, textWidth, textHeight, textAlign, textBaseline);
+            if (++attempts > 10) break;
+          }
+          placedLabels.push(labelRect);
+
+          const lineX = x + 12 * Math.sin(angle);
+          const lineY = y + 12 * Math.cos(angle);
+
+          if (p.markerSymbol) {
+            ctx.fillStyle = '#111';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(p.markerSymbol, x, y);
+          } else {
+            ctx.fillStyle = p.color;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = p.color;
+            ctx.beginPath();
+            ctx.arc(x, y, markerRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+          }
+
+          ctx.strokeStyle = '#444';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(lineX, lineY);
+          ctx.lineTo(lx, ly);
+          ctx.stroke();
+
+          ctx.fillStyle = '#111';
+          ctx.textAlign = textAlign;
+          ctx.textBaseline = textBaseline;
+          ctx.fillText(labelText, lx, ly);
+        }
+
+        swe.close();
+      } catch (err) {
+        console.error(err);
+        alert("Error: " + err.message);
+      }
     }
 
     function setToNow() {
       const now = new Date();
-      document.getElementById('dateInput').value = now.toISOString().slice(0, 10);
-      document.getElementById('timeInput').value = now.getHours().toString().padStart(2, '0') + ':' + 
-                                                   now.getMinutes().toString().padStart(2, '0');
+      const tzValue = Number(document.getElementById('tzSelect').value);
+      const offset = getEffectiveOffset(now);
+      const tzMs = now.getTime() + offset * 60 * 60 * 1000;
+      const tzDate = new Date(tzMs);
+
+      document.getElementById('dateInput').value = tzDate.toISOString().slice(0, 10);
+      document.getElementById('timeInput').value =
+        tzDate.getUTCHours().toString().padStart(2, '0') + ':' +
+        tzDate.getUTCMinutes().toString().padStart(2, '0');
       updateChart();
     }
 
-    // Initial draw
+    window.updateChart = updateChart;
+    window.setToNow = setToNow;
+
+    // Populate timezone select and hook change handlers
+    function populateTimezones() {
+      const tz = document.getElementById('tzSelect');
+      tz.innerHTML = '';
+      const localOffset = -new Date().getTimezoneOffset() / 60; // e.g. PST => -8 (or -7 with DST)
+      const zoneLabels = {
+        '-12': 'UTC-12',
+        '-11': 'UTC-11',
+        '-10': 'HST / AKST UTC-10',
+        '-9': 'AKST / AKDT UTC-9',
+        '-8': 'Pacific (PST / PDT) UTC-8 / -7',
+        '-7': 'Mountain (MST / MDT) UTC-7 / -6',
+        '-6': 'Central (CST / CDT) UTC-6 / -5',
+        '-5': 'Eastern (EST / EDT) UTC-5 / -4',
+        '-4': 'Atlantic (AST / ADT) UTC-4 / -3',
+        '-3': 'UTC-3',
+        '-2': 'UTC-2',
+        '-1': 'UTC-1',
+        '0': 'UTC',
+        '1': 'UTC+1',
+        '2': 'UTC+2',
+        '3': 'UTC+3',
+        '4': 'UTC+4',
+        '5': 'UTC+5',
+        '6': 'UTC+6',
+        '7': 'UTC+7',
+        '8': 'UTC+8',
+        '9': 'Japan (JST) UTC+9',
+        '10': 'Australia (AEST / AEDT) UTC+10 / +11',
+        '11': 'UTC+11',
+        '12': 'UTC+12',
+        '13': 'UTC+13',
+        '14': 'UTC+14'
+      };
+      for (let tzValue = -12; tzValue <= 14; tzValue++) {
+        const opt = document.createElement('option');
+        opt.value = String(tzValue);
+        opt.textContent = zoneLabels[String(tzValue)] || (tzValue === 0 ? 'UTC' : (tzValue > 0 ? 'UTC+' + tzValue : 'UTC' + tzValue));
+        const defaultLat = tzValue >= 10 ? -33 : 45;
+        const hemisphere = defaultLat >= 0 ? 'north' : 'south';
+        opt.dataset.defaultLat = String(defaultLat);
+        opt.dataset.hemisphere = hemisphere;
+        if (dstTimezoneMap[String(tzValue)]) {
+          opt.dataset.timezone = dstTimezoneMap[String(tzValue)];
+        }
+        if (tzValue === Math.round(localOffset)) opt.selected = true;
+        tz.appendChild(opt);
+      }
+      tz.addEventListener('change', () => {
+        const selected = tz.selectedOptions[0];
+        const defaultLat = selected && selected.dataset && parseFloat(selected.dataset.defaultLat) || 45;
+        const hemi = selected && selected.dataset && selected.dataset.hemisphere || 'north';
+        currentLat = defaultLat;
+        document.getElementById('hemisphereInput').value = hemi;
+        updateChart();
+      });
+      document.getElementById('hemisphereInput').addEventListener('change', updateChart);
+    }
+
+    // No city population function — timezone central meridian is used instead
+
     window.onload = () => {
-      updateChart();
+      populateTimezones();
+
+      // Initialize date/time inputs to current local time
+      const now = new Date();
+      document.getElementById('dateInput').value = now.toISOString().slice(0, 10);
+      document.getElementById('timeInput').value =
+        now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+
+      // Try to get user's location; if allowed use it, otherwise default to Pacific
+      const tz = document.getElementById('tzSelect');
+      function setZoneFromBrowserOffset() {
+        const browserOffset = -new Date().getTimezoneOffset() / 60; // may reflect DST
+        // prefer matching zone in list if available
+        if (tz) {
+          // find exact match first, otherwise round
+          const match = Array.from(tz.options).find(o => Number(o.value) === Math.round(browserOffset));
+          if (match) tz.value = match.value;
+          else tz.value = String(Math.round(browserOffset));
+          tz.dispatchEvent(new Event('change'));
+          document.getElementById('placeName').textContent = tz.selectedOptions[0].textContent || '';
+          updateChart();
+        }
+      }
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+          currentLat = pos.coords.latitude;
+          // set hemisphere according to lat
+          document.getElementById('hemisphereInput').value = currentLat >= 0 ? 'north' : 'south';
+          // use browser tz offset (reflects user's clock) to choose timezone
+          setZoneFromBrowserOffset();
+        }, err => {
+          // geolocation denied or failed — default to Pacific
+          if (tz) tz.value = String(-8);
+          if (tz) tz.dispatchEvent(new Event('change'));
+          document.getElementById('placeName').textContent = tz.selectedOptions[0].textContent || '';
+          updateChart();
+        }, { timeout: 5000 });
+      } else {
+        // no geolocation available — fallback to browser offset
+        setZoneFromBrowserOffset();
+      }
     };
   </script>
 </body>
