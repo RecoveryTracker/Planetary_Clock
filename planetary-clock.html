@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Planetary Altitude Clock</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; background: #111; color: #eee; }
+    canvas { border: 2px solid #444; background: #000; border-radius: 50%; }
+    pre { margin: 20px auto; max-width: 400px; text-align: left; font-size: 16px; background: #222; padding: 10px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h2>Planetary Altitude Clock — 9 AM San Francisco (April 12, 2026)</h2>
+  <canvas id="clock" width="600" height="600"></canvas>
+  <pre id="output">Loading...</pre>
+
+  <script type="module">
+    import SwissEph from 'https://cdn.jsdelivr.net/gh/prolaxu/swisseph-wasm@main/src/swisseph.js';
+
+    const planets = [
+      { name: 'Sun',     id: 0, color: '#ffeb3b' },
+      { name: 'Moon',    id: 1, color: '#e0e0e0' },
+      { name: 'Mercury', id: 2, color: '#9e9e9e' },
+      { name: 'Venus',   id: 3, color: '#ff9800' },
+      { name: 'Mars',    id: 4, color: '#f44336' },
+      { name: 'Jupiter', id: 5, color: '#4caf50' },
+      { name: 'Saturn',  id: 6, color: '#ffeb3b' }
+    ];
+
+    async function run() {
+      const swe = new SwissEph();
+      await swe.initSwissEph();
+
+      const jd = swe.julday(2026, 4, 12, 9.0);
+      const geopos = [-122.4, 37.8, 10];
+      const output = document.getElementById('output');
+      let text = '';
+
+      const canvas = document.getElementById('clock');
+      const ctx = canvas.getContext('2d');
+      const cx = 300, cy = 300, radius = 250;
+
+      // Background circle
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.stroke();
+
+      // Horizon line
+      ctx.strokeStyle = '#555';
+      ctx.beginPath(); ctx.moveTo(cx - radius, cy); ctx.lineTo(cx + radius, cy); ctx.stroke();
+
+      for (const p of planets) {
+        const pos = swe.calc_ut(jd, p.id, swe.SEFLG_SWIEPH);
+        const xaz = swe.azalt(jd, swe.SE_ECL2HOR, geopos, 0, 15, pos);
+
+        const azimuth = xaz.azimuth || 0;           // left-right (0° = North, 90° = East)
+        const alt = xaz.apparentAltitude || xaz.trueAltitude || 0;
+
+        text += `${p.name.padEnd(9)} : ${alt.toFixed(1)}°\n`;
+
+        // Map altitude to distance from center (90° = center, -90° = edge)
+        const dist = radius * (90 - alt) / 180;
+
+        const rad = azimuth * Math.PI / 180;
+        const px = cx + dist * Math.sin(rad);
+        const py = cy - dist * Math.cos(rad);   // -cos so North is at top
+
+        // Draw planet
+        ctx.fillStyle = p.color;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = p.color;
+        ctx.beginPath(); ctx.arc(px, py, 10, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Label
+        ctx.fillStyle = '#fff';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(p.name, px, py + 28);
+      }
+
+      output.textContent = text;
+      swe.close();
+    }
+
+    run().catch(err => document.getElementById('output').textContent = 'Error: ' + err.message);
+  </script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+import SwissEph from 'swisseph-wasm';
+
+const planets = [
+  { name: 'Sun',     id: SwissEph.SE_SUN },
+  { name: 'Moon',    id: SwissEph.SE_MOON },
+  { name: 'Mercury', id: SwissEph.SE_MERCURY },
+  { name: 'Venus',   id: SwissEph.SE_VENUS },
+  { name: 'Mars',    id: SwissEph.SE_MARS },
+  { name: 'Jupiter', id: SwissEph.SE_JUPITER },
+  { name: 'Saturn',  id: SwissEph.SE_SATURN }
+];
+
+async function getPlanets(year, month, day, hour, lon, lat) {
+  const swe = new SwissEph();
+  await swe.initSwissEph();
+
+  const jd = swe.julday(year, month, day, hour);
+  const results = [];
+
+  for (const p of planets) {
+    const pos = swe.calc_ut(jd, p.id, swe.SEFLG_SWIEPH);
+    const xaz = swe.azalt(jd, swe.SE_ECL2HOR, , 0, 15, pos);
+    const azimuth = xaz[0 2];     // up-down (for size or height)
+
+    results.push({
+      name: p.name,
+      azimuth: azimuth.toFixed(1),   // 0-360° around the circle
+      altitude: altitude.toFixed(1)  // + = above horizon
+    });
+  }
+
+  swe.close();
+  return results;
+}
+
+// Run it
+getAllAltitudes(2026, 4, 12, 9.0, -122.4, 37.8).then(console.log);
