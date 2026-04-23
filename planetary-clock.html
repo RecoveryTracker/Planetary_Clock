@@ -12,7 +12,69 @@
     }
     h1 { margin-bottom: 10px; }
     .controls { margin: 20px 0; }
-    input, button { padding: 10px; font-size: 16px; margin: 5px; }
+    .controls label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin: 5px 8px;
+      font-size: 14px;
+      color: #333;
+      vertical-align: middle;
+    }
+    input, button, select { padding: 10px; font-size: 16px; margin: 5px; font-family: inherit; }
+    .spinner {
+      display: inline-flex;
+      align-items: stretch;
+      border: 1px solid #bbb;
+      border-radius: 6px;
+      overflow: hidden;
+      vertical-align: middle;
+      background: #fff;
+      margin: 0 2px;
+    }
+    .spinner > input,
+    .spinner > select {
+      border: none;
+      margin: 0;
+      padding: 8px 6px;
+      background: transparent;
+      outline: none;
+      font-family: inherit;
+      font-size: 16px;
+      text-align: center;
+      -moz-appearance: textfield;
+      appearance: textfield;
+    }
+    .spinner > input::-webkit-outer-spin-button,
+    .spinner > input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .spinner-arrows {
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid #e5e5e5;
+      flex-shrink: 0;
+    }
+    .spinner-arrows button {
+      border: none;
+      background: #f3f3f3;
+      cursor: pointer;
+      font-size: 9px;
+      line-height: 1;
+      padding: 0 8px;
+      margin: 0;
+      flex: 1;
+      color: #555;
+      font-family: inherit;
+      min-width: 22px;
+    }
+    .spinner-arrows button:hover { background: #e5e5e5; }
+    .spinner-arrows button:active { background: #cfcfcf; }
+    .spinner-arrows button + button { border-top: 1px solid #e5e5e5; }
+    .w-mag { width: 46px; }
+    .w-2 { width: 38px; }
+    .w-4 { width: 56px; }
     canvas { 
       background: white; 
       border: 4px solid transparent; 
@@ -20,6 +82,17 @@
       box-shadow: 0 6px 25px rgba(0,0,0,0.2); 
     }
     .note { font-size: 14px; color: #555; margin: 10px 0; }
+    .legend {
+      font-size: 13px;
+      color: #444;
+      max-width: 640px;
+      margin: 15px auto;
+      text-align: left;
+      background: #fff;
+      padding: 10px 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
   </style>
 </head>
 <body>
@@ -27,21 +100,81 @@
   
   <div class="controls">
     <label>Timezone:
-      <select id="tzSelect"></select>
+      <span class="spinner">
+        <select id="tzSelect"></select>
+        <span class="spinner-arrows">
+          <button type="button" id="tzUp" title="Next timezone">&#9650;</button>
+          <button type="button" id="tzDown" title="Previous timezone">&#9660;</button>
+        </span>
+      </span>
     </label>
-    <label>Hemisphere:
-      <select id="hemisphereInput">
-        <option value="north">Northern</option>
-        <option value="south">Southern</option>
-      </select>
+    <label>Latitude:
+      <span class="spinner">
+        <input type="number" id="latMag" class="w-mag" min="0" max="90" step="1" value="45">
+        <select id="latNS">
+          <option value="N">N</option>
+          <option value="S">S</option>
+        </select>
+        <span class="spinner-arrows">
+          <button type="button" id="latUp" title="Increase latitude">&#9650;</button>
+          <button type="button" id="latDown" title="Decrease latitude">&#9660;</button>
+        </span>
+      </span>
     </label>
-    <!-- solar time removed; always use selected timezone or city timezone -->
-    <input type="date" id="dateInput" value="2026-04-12">
-    <input type="time" id="timeInput" value="11:05">
+    <label>Date:
+      <span class="spinner">
+        <input type="number" id="monthInput" class="w-2" min="1" max="12" step="1" value="4" title="Month">
+        <span class="spinner-arrows">
+          <button type="button" id="monthUp" title="Next month">&#9650;</button>
+          <button type="button" id="monthDown" title="Previous month">&#9660;</button>
+        </span>
+      </span>
+      <span class="spinner">
+        <input type="number" id="dayInput" class="w-2" min="1" max="31" step="1" value="12" title="Day">
+        <span class="spinner-arrows">
+          <button type="button" id="dayUp" title="Next day">&#9650;</button>
+          <button type="button" id="dayDown" title="Previous day">&#9660;</button>
+        </span>
+      </span>
+      <span class="spinner">
+        <input type="number" id="yearInput" class="w-4" min="1900" max="2200" step="1" value="2026" title="Year">
+        <span class="spinner-arrows">
+          <button type="button" id="yearUp" title="Next year">&#9650;</button>
+          <button type="button" id="yearDown" title="Previous year">&#9660;</button>
+        </span>
+      </span>
+    </label>
+    <label>Time:
+      <span class="spinner">
+        <input type="number" id="hourInput" class="w-2" min="0" max="23" step="1" value="11" title="Hour (24h)">
+        <span class="spinner-arrows">
+          <button type="button" id="hourUp" title="Next hour">&#9650;</button>
+          <button type="button" id="hourDown" title="Previous hour">&#9660;</button>
+        </span>
+      </span>
+      <span class="spinner">
+        <input type="number" id="minuteInput" class="w-2" min="0" max="59" step="1" value="5" title="Minute">
+        <span class="spinner-arrows">
+          <button type="button" id="minuteUp" title="Next minute">&#9650;</button>
+          <button type="button" id="minuteDown" title="Previous minute">&#9660;</button>
+        </span>
+      </span>
+    </label>
+    <input type="hidden" id="dateInput" value="2026-04-12">
+    <input type="hidden" id="timeInput" value="11:05">
     <button onclick="setToNow()">Now</button>
     <button onclick="updateChart()">Update Chart</button>
   </div>
+
   <canvas id="chart" width="640" height="640"></canvas>
+
+  <div class="legend">
+    <strong>Earth position key:</strong> 
+    The central Earth globe is shifted vertically relative to the East–West line to show the Sun’s relationship to the horizon.<br>
+    • Fully <strong>above</strong> the line = Midnight Sun / polar day (Sun never sets)<br>
+    • Fully <strong>below</strong> the line = Polar night (Sun never rises)<br>
+    • Crosses the line = Normal day/night cycle (Sun rises and sets). The exact shift reflects seasonal tilt + latitude.
+  </div>
 
   <script type="module">
     import SwissEph from 'https://cdn.jsdelivr.net/gh/prolaxu/swisseph-wasm@main/src/swisseph.js';
@@ -65,10 +198,7 @@
       { name: 'Halley',   id: 1001, color: '#1e88e5', type: 'comet' }
     ];
 
-    // Timezone definitions: each gives a representative latitude and hemisphere
-    // so selecting a timezone will automatically set longitude (central meridian)
-    // and a default latitude used to determine hemisphere/orientation.
-    let currentLat = 45; // default representative latitude for northern zones
+    let currentLat = 45;
 
     const dstTimezoneMap = {
       '-9': 'America/Anchorage',
@@ -89,7 +219,6 @@
         const value = Number(selected.value);
         return Number.isFinite(value) ? value : -7;
       }
-
       try {
         const parts = new Intl.DateTimeFormat('en-US', {
           timeZone: zoneName,
@@ -131,13 +260,11 @@
           return;
         }
 
-        // Parse date/time and convert to UTC. Optionally use solar time (based on longitude).
         const [y, m, d] = dateStr.split('-').map(Number);
         const [hh, mm] = (timeStr.split(':').map(Number)).concat([0]);
 
-        // Always use the chosen timezone offset (from timezone select)
         const tzValue = Number(document.getElementById('tzSelect').value);
-        const tzOffset = Number.isFinite(tzValue) ? tzValue : -7; // hours from UTC
+        const tzOffset = Number.isFinite(tzValue) ? tzValue : -7;
         const utcMs = Date.UTC(y, m - 1, d, hh - tzOffset, mm || 0, 0);
         const utcDate = new Date(utcMs);
 
@@ -151,15 +278,32 @@
 
         const jd = swe.julday(year, month, day, hour);
 
-        // Use timezone central meridian and currentLat (set when timezone changes)
         const tzLon = tzOffset * 15;
         const lon = tzLon;
+        currentLat = readLat();
         const lat = currentLat;
+        const hemisphere = currentLat >= 0 ? 'north' : 'south';
         const placeNameEl = document.getElementById('placeName');
         if (placeNameEl) {
           placeNameEl.textContent = document.getElementById('tzSelect').selectedOptions[0].textContent || '';
         }
         const geopos = [lon, lat, 0];
+
+        // Earth shifts linearly with latitude, with seasonal tilt added in:
+        //   effectiveLat = lat + Sun's current declination (Earth's tilt for the date)
+        // Clamped to ±90, so polar day/night land smoothly at the extremes.
+        const earthR = 18;
+        const maxShift = earthR + 5;
+        let sunDecForShift = 0;
+        try {
+          const eqFlags = swe.SEFLG_SWIEPH | swe.SEFLG_EQUATORIAL;
+          const sunEq = swe.calc_ut(jd, 0, eqFlags);
+          if (sunEq && Number.isFinite(sunEq[1])) sunDecForShift = sunEq[1];
+        } catch (e) {
+          console.warn('Could not compute Sun declination for Earth tilt; using latitude only', e);
+        }
+        const effectiveLat = Math.max(-90, Math.min(90, lat + sunDecForShift));
+        const earthShiftY = -(effectiveLat / 90) * maxShift;
 
         const canvas = document.getElementById('chart');
         const ctx = canvas.getContext('2d');
@@ -171,36 +315,39 @@
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Single outer circle (ecliptic / horizon rim) flush with the canvas edge
+        // Outer rim
         ctx.strokeStyle = '#222';
         ctx.lineWidth = rimWidth;
         ctx.beginPath(); 
         ctx.arc(cx, cy, radius, 0, Math.PI * 2); 
         ctx.stroke();
 
-        // Earth marker at the chart center
-        const earthRadius = 18;
-        const earthGradient = ctx.createRadialGradient(cx - 6, cy - 6, 4, cx, cy, earthRadius);
+        // ─────────────────────────────────────────────────────────────
+        // EARTH (shifted vertically to show horizon condition)
+        // ─────────────────────────────────────────────────────────────
+        const earthCy = cy + earthShiftY;
+
+        const earthGradient = ctx.createRadialGradient(cx - 6, earthCy - 6, 4, cx, earthCy, earthR);
         earthGradient.addColorStop(0, '#7fcfff');
         earthGradient.addColorStop(0.6, '#1e88e5');
         earthGradient.addColorStop(1, '#0d47a1');
         ctx.fillStyle = earthGradient;
         ctx.beginPath();
-        ctx.arc(cx, cy, earthRadius, 0, Math.PI * 2);
+        ctx.arc(cx, earthCy, earthR, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = '#004d40';
         ctx.lineWidth = 2;
         ctx.stroke();
 
+        // Green land patches (relative to shifted Earth center)
         ctx.fillStyle = '#2e7d32';
         ctx.beginPath();
-        ctx.arc(cx - 6, cy - 2, 6, 0.8, 2.4);
+        ctx.arc(cx - 6, earthCy - 2, 6, 0.8, 2.4);
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(cx + 4, cy + 4, 5, 3.5, 5.2);
+        ctx.arc(cx + 4, earthCy + 4, 5, 3.5, 5.2);
         ctx.fill();
 
-        const hemisphere = (document.getElementById('hemisphereInput') || {}).value || 'north';
         const directionLabels = hemisphere === 'north'
           ? { top: 'S', right: 'W', bottom: 'N', left: 'E' }
           : { top: 'N', right: 'E', bottom: 'S', left: 'W' };
@@ -261,12 +408,9 @@
           const xaz = swe.azalt(jd, swe.SE_ECL2HOR, geopos, 0, 15, pos);
           let azimuth = xaz.azimuth !== undefined ? xaz.azimuth : (xaz[0] || 0);
 
-          // Keep planets inside the outer rim while leaving room for labels
           const dist = planetRing;
 
-          // Angle: South at top by default. Flip orientation for Northern hemisphere.
-          let angleDeg = azimuth + 180; // South = 0° at top
-          const hemisphere = (document.getElementById('hemisphereInput') || {}).value || 'north';
+          let angleDeg = azimuth + 180;
           if (hemisphere === 'north') angleDeg = -angleDeg;
           const angle = angleDeg * Math.PI / 180;
 
@@ -393,26 +537,71 @@
 
     function setToNow() {
       const now = new Date();
-      const tzValue = Number(document.getElementById('tzSelect').value);
       const offset = getEffectiveOffset(now);
       const tzMs = now.getTime() + offset * 60 * 60 * 1000;
       const tzDate = new Date(tzMs);
 
-      document.getElementById('dateInput').value = tzDate.toISOString().slice(0, 10);
-      document.getElementById('timeInput').value =
-        tzDate.getUTCHours().toString().padStart(2, '0') + ':' +
-        tzDate.getUTCMinutes().toString().padStart(2, '0');
+      const y = tzDate.getUTCFullYear();
+      const m = tzDate.getUTCMonth() + 1;
+      const d = tzDate.getUTCDate();
+      const hh = tzDate.getUTCHours();
+      const mn = tzDate.getUTCMinutes();
+
+      const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v); };
+      setVal('yearInput', y);
+      setVal('monthInput', m);
+      setVal('dayInput', d);
+      setVal('hourInput', hh);
+      setVal('minuteInput', mn);
+
+      syncDateHidden();
+      syncTimeHidden();
       updateChart();
+    }
+
+    function syncDateHidden() {
+      const m = parseInt((document.getElementById('monthInput') || {}).value, 10) || 1;
+      const d = parseInt((document.getElementById('dayInput') || {}).value, 10) || 1;
+      const y = parseInt((document.getElementById('yearInput') || {}).value, 10) || new Date().getFullYear();
+      const hidden = document.getElementById('dateInput');
+      if (hidden) hidden.value = y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+    }
+
+    function syncTimeHidden() {
+      const h = parseInt((document.getElementById('hourInput') || {}).value, 10);
+      const mn = parseInt((document.getElementById('minuteInput') || {}).value, 10);
+      const hidden = document.getElementById('timeInput');
+      if (hidden) {
+        const hh = Number.isFinite(h) ? Math.max(0, Math.min(23, h)) : 0;
+        const mm = Number.isFinite(mn) ? Math.max(0, Math.min(59, mn)) : 0;
+        hidden.value = String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+      }
+    }
+
+    function readLat() {
+      const magEl = document.getElementById('latMag');
+      const nsEl = document.getElementById('latNS');
+      const rawMag = magEl ? parseFloat(magEl.value) : NaN;
+      const mag = Number.isFinite(rawMag) ? Math.max(0, Math.min(90, Math.round(rawMag))) : 0;
+      const ns = nsEl ? nsEl.value : 'N';
+      return ns === 'S' ? -mag : mag;
+    }
+
+    function writeLat(signed) {
+      const clamped = Math.max(-90, Math.min(90, Math.round(signed)));
+      const magEl = document.getElementById('latMag');
+      const nsEl = document.getElementById('latNS');
+      if (magEl) magEl.value = String(Math.abs(clamped));
+      if (nsEl) nsEl.value = clamped < 0 ? 'S' : 'N';
     }
 
     window.updateChart = updateChart;
     window.setToNow = setToNow;
 
-    // Populate timezone select and hook change handlers
     function populateTimezones() {
       const tz = document.getElementById('tzSelect');
       tz.innerHTML = '';
-      const localOffset = -new Date().getTimezoneOffset() / 60; // e.g. PST => -8 (or -7 with DST)
+      const localOffset = -new Date().getTimezoneOffset() / 60;
       const zoneLabels = {
         '-12': 'UTC-12',
         '-11': 'UTC-11',
@@ -447,9 +636,7 @@
         opt.value = String(tzValue);
         opt.textContent = zoneLabels[String(tzValue)] || (tzValue === 0 ? 'UTC' : (tzValue > 0 ? 'UTC+' + tzValue : 'UTC' + tzValue));
         const defaultLat = tzValue >= 10 ? -33 : 45;
-        const hemisphere = defaultLat >= 0 ? 'north' : 'south';
         opt.dataset.defaultLat = String(defaultLat);
-        opt.dataset.hemisphere = hemisphere;
         if (dstTimezoneMap[String(tzValue)]) {
           opt.dataset.timezone = dstTimezoneMap[String(tzValue)];
         }
@@ -458,58 +645,201 @@
       }
       tz.addEventListener('change', () => {
         const selected = tz.selectedOptions[0];
-        const defaultLat = selected && selected.dataset && parseFloat(selected.dataset.defaultLat) || 45;
-        const hemi = selected && selected.dataset && selected.dataset.hemisphere || 'north';
+        const defaultLat = (selected && selected.dataset && parseFloat(selected.dataset.defaultLat)) || 45;
         currentLat = defaultLat;
-        document.getElementById('hemisphereInput').value = hemi;
+        writeLat(defaultLat);
         updateChart();
       });
-      document.getElementById('hemisphereInput').addEventListener('change', updateChart);
+
+      const tzStep = (dir) => {
+        const opts = Array.from(tz.options);
+        if (!opts.length) return;
+        let idx = opts.findIndex(o => o.value === tz.value);
+        if (idx < 0) idx = 0;
+        idx = (idx + dir + opts.length) % opts.length;
+        tz.value = opts[idx].value;
+        tz.dispatchEvent(new Event('change'));
+      };
+      const tzUp = document.getElementById('tzUp');
+      const tzDown = document.getElementById('tzDown');
+      bindRepeat(tzUp, () => tzStep(1));
+      bindRepeat(tzDown, () => tzStep(-1));
     }
 
-    // No city population function — timezone central meridian is used instead
+    // Press-and-hold helper: fires action() on press, then again every
+    // INTERVAL_MS after a HOLD_DELAY_MS initial pause. Stops on release/leave.
+    // Also fires on keyboard activation (Enter/Space).
+    function bindRepeat(button, action, opts) {
+      if (!button) return;
+      const holdDelay = (opts && opts.holdDelay) != null ? opts.holdDelay : 350;
+      const interval = (opts && opts.interval) != null ? opts.interval : 70;
+      let timeoutId = null;
+      let intervalId = null;
+      let firedFromPointer = false;
+
+      function stop() {
+        if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+        if (intervalId) { clearInterval(intervalId); intervalId = null; }
+      }
+
+      button.addEventListener('pointerdown', (e) => {
+        if (e.button != null && e.button !== 0) return;
+        e.preventDefault();
+        firedFromPointer = true;
+        action();
+        timeoutId = setTimeout(() => {
+          intervalId = setInterval(action, interval);
+        }, holdDelay);
+      });
+
+      ['pointerup', 'pointerleave', 'pointercancel'].forEach(evt => {
+        button.addEventListener(evt, stop);
+      });
+      window.addEventListener('blur', stop);
+
+      button.addEventListener('click', () => {
+        if (firedFromPointer) { firedFromPointer = false; return; }
+        action();
+      });
+    }
+
+    // Coalesce rapid updateChart() calls so holding an arrow doesn't pile up
+    // overlapping async redraws. Always settles on the latest value.
+    let _updatePending = false;
+    let _updateRequested = false;
+    async function safeUpdate() {
+      if (_updatePending) { _updateRequested = true; return; }
+      _updatePending = true;
+      try {
+        await updateChart();
+      } finally {
+        _updatePending = false;
+        if (_updateRequested) { _updateRequested = false; safeUpdate(); }
+      }
+    }
+
+    // Generic numeric spinner: ▲/▼ buttons + typeable input, with clamp/wrap.
+    function bindNumberSpinner(inputId, upId, downId, opts) {
+      const input = document.getElementById(inputId);
+      const upBtn = document.getElementById(upId);
+      const downBtn = document.getElementById(downId);
+      if (!input || !upBtn || !downBtn) return;
+
+      const min = opts.min;
+      const max = opts.max;
+      const wrap = !!opts.wrap;
+      const step = opts.step != null ? opts.step : 1;
+      const onChange = opts.onChange || (() => {});
+
+      function clamp(n) {
+        if (!Number.isFinite(n)) return min;
+        n = Math.round(n);
+        if (wrap) {
+          const range = max - min + 1;
+          return ((n - min) % range + range) % range + min;
+        }
+        return Math.max(min, Math.min(max, n));
+      }
+
+      function spin(delta) {
+        const cur = parseFloat(input.value);
+        const next = clamp((Number.isFinite(cur) ? cur : min) + delta);
+        input.value = String(next);
+        onChange(next);
+      }
+
+      bindRepeat(upBtn, () => spin(step));
+      bindRepeat(downBtn, () => spin(-step));
+      input.addEventListener('change', () => {
+        const v = clamp(parseFloat(input.value));
+        input.value = String(v);
+        onChange(v);
+      });
+    }
+
+    function clampDayToMonth() {
+      const monthEl = document.getElementById('monthInput');
+      const yearEl = document.getElementById('yearInput');
+      const dayEl = document.getElementById('dayInput');
+      if (!monthEl || !yearEl || !dayEl) return;
+      const m = parseInt(monthEl.value, 10) || 1;
+      const y = parseInt(yearEl.value, 10) || new Date().getFullYear();
+      const d = parseInt(dayEl.value, 10) || 1;
+      const maxDay = new Date(y, m, 0).getDate();
+      if (d > maxDay) dayEl.value = String(maxDay);
+      if (d < 1) dayEl.value = '1';
+    }
+
+    function bindAllSpinners() {
+      // Latitude (signed -90..90, displayed as magnitude + N/S)
+      const latUp = document.getElementById('latUp');
+      const latDown = document.getElementById('latDown');
+      const spinLat = (delta) => {
+        writeLat(readLat() + delta);
+        currentLat = readLat();
+        safeUpdate();
+      };
+      bindRepeat(latUp, () => spinLat(1));
+      bindRepeat(latDown, () => spinLat(-1));
+
+      const latMag = document.getElementById('latMag');
+      const latNS = document.getElementById('latNS');
+      const onLatChange = () => {
+        writeLat(readLat());
+        currentLat = readLat();
+        safeUpdate();
+      };
+      if (latMag) latMag.addEventListener('change', onLatChange);
+      if (latNS) latNS.addEventListener('change', onLatChange);
+
+      const onDateChange = () => { clampDayToMonth(); syncDateHidden(); safeUpdate(); };
+      bindNumberSpinner('monthInput', 'monthUp', 'monthDown', { min: 1, max: 12, wrap: true, onChange: onDateChange });
+      bindNumberSpinner('dayInput',   'dayUp',   'dayDown',   { min: 1, max: 31, wrap: true, onChange: onDateChange });
+      bindNumberSpinner('yearInput',  'yearUp',  'yearDown',  { min: 1900, max: 2200, wrap: false, onChange: onDateChange });
+
+      const onTimeChange = () => { syncTimeHidden(); safeUpdate(); };
+      bindNumberSpinner('hourInput',   'hourUp',   'hourDown',   { min: 0, max: 23, wrap: true, onChange: onTimeChange });
+      bindNumberSpinner('minuteInput', 'minuteUp', 'minuteDown', { min: 0, max: 59, wrap: true, onChange: onTimeChange });
+    }
 
     window.onload = () => {
-      populateTimezones();
+      try {
+        populateTimezones();
+        bindAllSpinners();
 
-      // Initialize date/time inputs to current local time
-      const now = new Date();
-      document.getElementById('dateInput').value = now.toISOString().slice(0, 10);
-      document.getElementById('timeInput').value =
-        now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+        const now = new Date();
+        const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v); };
+        setVal('yearInput', now.getFullYear());
+        setVal('monthInput', now.getMonth() + 1);
+        setVal('dayInput', now.getDate());
+        setVal('hourInput', now.getHours());
+        setVal('minuteInput', now.getMinutes());
+        syncDateHidden();
+        syncTimeHidden();
+      } catch (err) {
+        console.error('Init error:', err);
+      }
 
-      // Try to get user's location; if allowed use it, otherwise default to Pacific
       const tz = document.getElementById('tzSelect');
       function setZoneFromBrowserOffset() {
-        const browserOffset = -new Date().getTimezoneOffset() / 60; // may reflect DST
-        // prefer matching zone in list if available
-        if (tz) {
-          // find exact match first, otherwise round
-          const match = Array.from(tz.options).find(o => Number(o.value) === Math.round(browserOffset));
-          if (match) tz.value = match.value;
-          else tz.value = String(Math.round(browserOffset));
-          tz.dispatchEvent(new Event('change'));
-          document.getElementById('placeName').textContent = tz.selectedOptions[0].textContent || '';
-          updateChart();
-        }
+        if (!tz) return;
+        const browserOffset = -new Date().getTimezoneOffset() / 60;
+        const match = Array.from(tz.options).find(o => Number(o.value) === Math.round(browserOffset));
+        if (match) tz.value = match.value;
+        else tz.value = String(Math.round(browserOffset));
+        tz.dispatchEvent(new Event('change'));
       }
 
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(pos => {
           currentLat = pos.coords.latitude;
-          // set hemisphere according to lat
-          document.getElementById('hemisphereInput').value = currentLat >= 0 ? 'north' : 'south';
-          // use browser tz offset (reflects user's clock) to choose timezone
+          writeLat(currentLat);
           setZoneFromBrowserOffset();
-        }, err => {
-          // geolocation denied or failed — default to Pacific
+        }, () => {
           if (tz) tz.value = String(-8);
           if (tz) tz.dispatchEvent(new Event('change'));
-          document.getElementById('placeName').textContent = tz.selectedOptions[0].textContent || '';
-          updateChart();
         }, { timeout: 5000 });
       } else {
-        // no geolocation available — fallback to browser offset
         setZoneFromBrowserOffset();
       }
     };
