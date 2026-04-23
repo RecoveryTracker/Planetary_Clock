@@ -20,8 +20,9 @@
       flex-wrap: wrap;
       justify-content: center;
       align-items: center;
-      gap: 4px 8px;
-      margin: 8px 0 10px;
+      gap: 6px 10px;
+      margin: 8px auto 10px;
+      max-width: 640px;
     }
     .controls label {
       display: inline-flex;
@@ -225,7 +226,6 @@
     <input type="hidden" id="dateInput" value="2026-04-12">
     <input type="hidden" id="timeInput" value="11:05">
     <button onclick="setToNow()" class="lock-when-clock">Now</button>
-    <button onclick="updateChart()" class="lock-when-clock">Update Chart</button>
     <button id="clockModeBtn" type="button" title="Auto-update to real time every minute">Clock Mode: Off</button>
   </div>
 
