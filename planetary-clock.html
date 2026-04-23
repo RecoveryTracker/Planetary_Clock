@@ -93,6 +93,40 @@
       border-radius: 8px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
+    .canvas-wrap {
+      position: relative;
+      display: inline-block;
+    }
+    #chartTooltip {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(20, 20, 20, 0.92);
+      color: #fff;
+      padding: 4px 9px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: Arial, sans-serif;
+      white-space: nowrap;
+      display: none;
+      z-index: 10;
+      transform: translate(12px, 12px);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    #clockModeBtn {
+      background: #f3f3f3;
+      border: 1px solid #bbb;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    #clockModeBtn.active {
+      background: #2e7d32;
+      border-color: #1b5e20;
+      color: #fff;
+    }
+    body.clock-mode .lock-when-clock {
+      opacity: 0.45;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -121,7 +155,7 @@
         </span>
       </span>
     </label>
-    <label>Date:
+    <label class="lock-when-clock">Date:
       <span class="spinner">
         <input type="number" id="monthInput" class="w-2" min="1" max="12" step="1" value="4" title="Month">
         <span class="spinner-arrows">
@@ -144,7 +178,7 @@
         </span>
       </span>
     </label>
-    <label>Time:
+    <label class="lock-when-clock">Time:
       <span class="spinner">
         <input type="number" id="hourInput" class="w-2" min="0" max="23" step="1" value="11" title="Hour (24h)">
         <span class="spinner-arrows">
@@ -162,18 +196,24 @@
     </label>
     <input type="hidden" id="dateInput" value="2026-04-12">
     <input type="hidden" id="timeInput" value="11:05">
-    <button onclick="setToNow()">Now</button>
-    <button onclick="updateChart()">Update Chart</button>
+    <button onclick="setToNow()" class="lock-when-clock">Now</button>
+    <button onclick="updateChart()" class="lock-when-clock">Update Chart</button>
+    <button id="clockModeBtn" type="button" title="Auto-update to real time every minute">Clock Mode: Off</button>
   </div>
 
-  <canvas id="chart" width="640" height="640"></canvas>
+  <div class="canvas-wrap">
+    <canvas id="chart" width="640" height="640"></canvas>
+    <div id="chartTooltip"></div>
+  </div>
 
   <div class="legend">
-    <strong>Earth position key:</strong> 
-    The central Earth globe is shifted vertically relative to the East–West line to show the Sun’s relationship to the horizon.<br>
-    • Fully <strong>above</strong> the line = Midnight Sun / polar day (Sun never sets)<br>
-    • Fully <strong>below</strong> the line = Polar night (Sun never rises)<br>
-    • Crosses the line = Normal day/night cycle (Sun rises and sets). The exact shift reflects seasonal tilt + latitude.
+    <strong>Layout:</strong> Top-down geocentric (Tychonic) view. Earth sits at the center, the Moon orbits Earth, the Sun orbits Earth at about a third of the chart radius, and the other planets, asteroids, and Halley's Comet are drawn orbiting the Sun. Every body's <em>direction</em> on screen is its observer-relative azimuth, so the angles match what's overhead.<br>
+    <strong>Hover</strong> any body to see its name.<br>
+    <strong>Clock Mode:</strong> snaps the date and time to "now" and re-syncs every minute. Date and Time controls are locked while it's on.<br>
+    <strong>Earth position key:</strong> The Earth globe shifts vertically from the chart center to show the Sun's relationship to the horizon.<br>
+    • Fully <strong>above</strong> center = Midnight Sun / polar day (Sun never sets)<br>
+    • Fully <strong>below</strong> center = Polar night (Sun never rises)<br>
+    • Near center = normal day/night cycle. The exact shift reflects seasonal tilt + latitude.
   </div>
 
   <script type="module">
@@ -199,6 +239,87 @@
     ];
 
     let currentLat = 45;
+
+    // ──────────────────────────────────────────────────────────────────
+    // Halley's Comet position from Keplerian orbital elements.
+    //
+    // swisseph-wasm doesn't ship the cometary ephemeris files, so
+    // calc_ut(jd, 1001, ...) silently fails. We approximate Halley
+    // ourselves: solve Kepler's equation for its eccentric anomaly,
+    // build the heliocentric (x, y, z) position in the ecliptic frame,
+    // subtract Earth's heliocentric position (≈ -Sun's geocentric
+    // vector) to get geocentric (x, y, z), then convert to ecliptic
+    // longitude / latitude / distance — the same shape calc_ut returns.
+    //
+    // Elements (J2000.0, perihelion 1986 Feb 9):
+    //   a      = 17.834 AU
+    //   e      = 0.96714
+    //   i      = 162.26°  (retrograde orbit)
+    //   Ω      = 58.42°
+    //   ω      = 111.33°
+    //   T_peri = JD 2446470.95  (1986-02-09 ≈)
+    //   P      = 75.32 yr
+    // ──────────────────────────────────────────────────────────────────
+    const HALLEY = {
+      a:    17.834,
+      e:    0.96714,
+      iRad: 162.26 * Math.PI / 180,
+      OmRad: 58.42 * Math.PI / 180,
+      wRad: 111.33 * Math.PI / 180,
+      Tperi: 2446470.95,
+      P_days: 75.32 * 365.25
+    };
+
+    function halleyHelio(jd) {
+      const H = HALLEY;
+      let M = 2 * Math.PI * ((jd - H.Tperi) / H.P_days);
+      M = ((M % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+      let E = M;
+      for (let k = 0; k < 60; k++) {
+        const dE = (E - H.e * Math.sin(E) - M) / (1 - H.e * Math.cos(E));
+        E -= dE;
+        if (Math.abs(dE) < 1e-12) break;
+      }
+      const nu = 2 * Math.atan2(
+        Math.sqrt(1 + H.e) * Math.sin(E / 2),
+        Math.sqrt(1 - H.e) * Math.cos(E / 2)
+      );
+      const r = H.a * (1 - H.e * Math.cos(E));
+      const xo = r * Math.cos(nu);
+      const yo = r * Math.sin(nu);
+      const cw = Math.cos(H.wRad), sw = Math.sin(H.wRad);
+      const cn = Math.cos(H.OmRad), sn = Math.sin(H.OmRad);
+      const ci = Math.cos(H.iRad), si = Math.sin(H.iRad);
+      const x1 = cw * xo - sw * yo;
+      const y1 = sw * xo + cw * yo;
+      const x2 = x1;
+      const y2 = ci * y1;
+      const z2 = si * y1;
+      const x = cn * x2 - sn * y2;
+      const y = sn * x2 + cn * y2;
+      const z = z2;
+      return [x, y, z];
+    }
+
+    function halleyGeocentricEcl(swe, jd) {
+      const sunGeo = swe.calc_ut(jd, 0, swe.SEFLG_SWIEPH);
+      const sLon = sunGeo[0] * Math.PI / 180;
+      const sLat = sunGeo[1] * Math.PI / 180;
+      const sDist = sunGeo[2];
+      const sx = sDist * Math.cos(sLat) * Math.cos(sLon);
+      const sy = sDist * Math.cos(sLat) * Math.sin(sLon);
+      const sz = sDist * Math.sin(sLat);
+      const ex = -sx, ey = -sy, ez = -sz;
+      const [hx, hy, hz] = halleyHelio(jd);
+      const gx = hx - ex;
+      const gy = hy - ey;
+      const gz = hz - ez;
+      const dist = Math.sqrt(gx * gx + gy * gy + gz * gz);
+      let lon = Math.atan2(gy, gx) * 180 / Math.PI;
+      lon = ((lon % 360) + 360) % 360;
+      const lat = Math.asin(gz / dist) * 180 / Math.PI;
+      return [lon, lat, dist];
+    }
 
     const dstTimezoneMap = {
       '-9': 'America/Anchorage',
@@ -322,31 +443,9 @@
         ctx.arc(cx, cy, radius, 0, Math.PI * 2); 
         ctx.stroke();
 
-        // ─────────────────────────────────────────────────────────────
-        // EARTH (shifted vertically to show horizon condition)
-        // ─────────────────────────────────────────────────────────────
+        // Earth's screen Y (the globe itself is drawn later, on top of
+        // the crosshairs / planet ring / azimuth lines).
         const earthCy = cy + earthShiftY;
-
-        const earthGradient = ctx.createRadialGradient(cx - 6, earthCy - 6, 4, cx, earthCy, earthR);
-        earthGradient.addColorStop(0, '#7fcfff');
-        earthGradient.addColorStop(0.6, '#1e88e5');
-        earthGradient.addColorStop(1, '#0d47a1');
-        ctx.fillStyle = earthGradient;
-        ctx.beginPath();
-        ctx.arc(cx, earthCy, earthR, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#004d40';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // Green land patches (relative to shifted Earth center)
-        ctx.fillStyle = '#2e7d32';
-        ctx.beginPath();
-        ctx.arc(cx - 6, earthCy - 2, 6, 0.8, 2.4);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(cx + 4, earthCy + 4, 5, 3.5, 5.2);
-        ctx.fill();
 
         const directionLabels = hemisphere === 'north'
           ? { top: 'S', right: 'W', bottom: 'N', left: 'E' }
@@ -361,172 +460,264 @@
         ctx.fillText(directionLabels.left, cx - radius + 18, cy);
         ctx.fillText(directionLabels.right, cx + radius - 18, cy);
 
+        // N-S / E-W crosshairs, rim to rim, through the chart center.
+        const crossInset = rimWidth / 2 + 1;
+        ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cx - radius + crossInset, cy);
+        ctx.lineTo(cx + radius - crossInset, cy);
+        ctx.moveTo(cx, cy - radius + crossInset);
+        ctx.lineTo(cx, cy + radius - crossInset);
+        ctx.stroke();
+
+        // Planet ring (chart-centered) — the angular reference circle.
         const planetRing = radius - 85;
-        ctx.strokeStyle = '#555';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#666';
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.arc(cx, cy, planetRing, 0, Math.PI * 2);
         ctx.stroke();
 
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(cx - planetRing, cy);
-        ctx.lineTo(cx + planetRing, cy);
-        ctx.moveTo(cx, cy - planetRing);
-        ctx.lineTo(cx, cy + planetRing);
-        ctx.stroke();
+        // ─────────────────────────────────────────────────────────────
+        // GEOCENTRIC (TYCHONIC) LAYOUT
+        //   Earth at chart center.
+        //   Moon orbits Earth at moonOrbitR.
+        //   Sun orbits Earth at sunOrbitR (~1/3 of chart radius).
+        //   Other planets/asteroids/comets orbit the Sun's on-screen
+        //   position at their own per-body radii.
+        //   Angles for every body are still the observer-relative
+        //   azimuth, so the directions you see match what's overhead.
+        // ─────────────────────────────────────────────────────────────
+        // Moon is an exception to the AU→pixel scale: it orbits Earth,
+        // not the Sun, so it's drawn at a fixed pixel offset from the
+        // Earth globe along its own azimuth.
+        const moonOffsetR = earthR + 22;   // ~40 px from Earth
 
-        const placedLabels = [];
-        function rectsOverlap(a, b) {
-          return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+        // AU → chart pixels (log scale).
+        //   0.39 AU (Mercury @ perihelion)   → ~25 px
+        //     1 AU (Earth→Sun)              → ~65 px
+        //     5 AU (Jupiter)                → ~130 px
+        //    40 AU (Pluto / Halley aphelion) → ~215 px
+        const AU_MIN = 0.30;
+        const AU_MAX = 45;
+        const R_MIN  = 25;
+        const R_MAX  = 215;
+        const LOG_MIN = Math.log(AU_MIN);
+        const LOG_MAX = Math.log(AU_MAX);
+        const auToPx = (au) => {
+          const clamped = Math.max(AU_MIN, Math.min(AU_MAX, au));
+          const t = (Math.log(clamped) - LOG_MIN) / (LOG_MAX - LOG_MIN);
+          return R_MIN + t * (R_MAX - R_MIN);
+        };
+
+        // Ecliptic spherical → cartesian (Earth-centered for calc_ut output).
+        const eclToXYZ = (lonDeg, latDeg, dist) => {
+          const lo = lonDeg * Math.PI / 180;
+          const la = latDeg * Math.PI / 180;
+          const cl = Math.cos(la);
+          return [dist * cl * Math.cos(lo), dist * cl * Math.sin(lo), dist * Math.sin(la)];
+        };
+
+        // Pass 1: compute observer-relative angle AND distance-from-Sun
+        // (in AU) for every body. Distance-from-Sun is derived by
+        // differencing the body's geocentric ecliptic vector against
+        // the Sun's — so we don't need SEFLG_HELCTR.
+        let sunGeoXYZ = null;
+        try {
+          const sunPos = swe.calc_ut(jd, 0, swe.SEFLG_SWIEPH);
+          sunGeoXYZ = { vec: eclToXYZ(sunPos[0], sunPos[1], sunPos[2]), earthDist: sunPos[2] };
+        } catch (e) {
+          console.warn('Sun position unavailable; AU scale will use 1 AU fallback', e);
         }
-        function makeLabelRect(x, y, w, h, align, baseline) {
-          const padding = 4;
-          let left = x;
-          if (align === 'center') left = x - w / 2 - padding;
-          else if (align === 'right') left = x - w - padding * 2;
-          else left = x - padding;
 
-          let top = y;
-          if (baseline === 'middle') top = y - h / 2 - padding;
-          else if (baseline === 'bottom') top = y - h - padding * 2;
-          else top = y - padding;
-
-          return { left, top, right: left + w + padding * 2, bottom: top + h + padding * 2 };
-        }
-
+        const bodyAngles = [];
         for (const p of planets) {
           let pos;
+          let auFromSun;
           try {
-            pos = swe.calc_ut(jd, p.id, swe.SEFLG_SWIEPH);
+            if (p.name === 'Halley') {
+              pos = halleyGeocentricEcl(swe, jd);
+              const [hx, hy, hz] = halleyHelio(jd);
+              auFromSun = Math.sqrt(hx * hx + hy * hy + hz * hz);
+            } else {
+              pos = swe.calc_ut(jd, p.id, swe.SEFLG_SWIEPH);
+              if (p.type === 'sun') {
+                auFromSun = (sunGeoXYZ ? sunGeoXYZ.earthDist : 1.0); // Sun: fixed at Earth→Sun distance
+              } else if (sunGeoXYZ) {
+                const [bx, by, bz] = eclToXYZ(pos[0], pos[1], pos[2]);
+                const [sx, sy, sz] = sunGeoXYZ.vec;
+                auFromSun = Math.sqrt((bx - sx) ** 2 + (by - sy) ** 2 + (bz - sz) ** 2);
+              } else {
+                auFromSun = pos[2];
+              }
+            }
           } catch (err) {
             console.warn('Skipping body because position could not be calculated:', p.name, err);
             continue;
           }
-
           const xaz = swe.azalt(jd, swe.SE_ECL2HOR, geopos, 0, 15, pos);
-          let azimuth = xaz.azimuth !== undefined ? xaz.azimuth : (xaz[0] || 0);
-
-          const dist = planetRing;
-
+          const azimuth = xaz.azimuth !== undefined ? xaz.azimuth : (xaz[0] || 0);
           let angleDeg = azimuth + 180;
           if (hemisphere === 'north') angleDeg = -angleDeg;
           const angle = angleDeg * Math.PI / 180;
+          bodyAngles.push({ p, angle, auFromSun });
+        }
 
-          const x = cx + dist * Math.sin(angle);
-          const y = cy + dist * Math.cos(angle);
+        // Per-body azimuth lines from the chart center out to the planet
+        // ring, with a short colored tick on the ring at the body's
+        // exact angle from Earth. Lines emanate from (cx, cy) so they
+        // align cleanly with the ring and crosshairs regardless of
+        // Earth's vertical shift.
+        for (const b of bodyAngles) {
+          const sinA = Math.sin(b.angle);
+          const cosA = Math.cos(b.angle);
+          const rx = cx + planetRing * sinA;
+          const ry = cy + planetRing * cosA;
 
-          const markerRadius = 7;
-          ctx.font = 'bold 13px Arial';
-          const labelText = p.name;
-          const textWidth = ctx.measureText(labelText).width;
-          const textHeight = 16;
-
-          let labelOffset = 32;
-          const minLabelOffset = 12;
-          const maxLabelOffset = Math.max(32, radius - dist - 20);
-          let lx = x + labelOffset * Math.sin(angle);
-          let ly = y + labelOffset * Math.cos(angle);
-          let textAlign = Math.abs(Math.sin(angle)) > 0.3 ? (Math.sin(angle) > 0 ? 'left' : 'right') : 'center';
-          let textBaseline = Math.cos(angle) > 0 ? 'top' : 'bottom';
-          let labelRect = makeLabelRect(lx, ly, textWidth, textHeight, textAlign, textBaseline);
-
-          function rectOutsideCircle(rect) {
-            const corners = [
-              { x: rect.left, y: rect.top },
-              { x: rect.right, y: rect.top },
-              { x: rect.left, y: rect.bottom },
-              { x: rect.right, y: rect.bottom }
-            ];
-            return corners.some(c => {
-              const dx = c.x - cx;
-              const dy = c.y - cy;
-              return Math.sqrt(dx * dx + dy * dy) > radius - rimWidth / 2 - 2;
-            });
-          }
-
-          let attempts = 0;
-          while (true) {
-            const overlaps = placedLabels.some(other => rectsOverlap(other, labelRect));
-            const outside = rectOutsideCircle(labelRect);
-            if (!overlaps && !outside) break;
-
-            if (outside && labelOffset > minLabelOffset) {
-              labelOffset = Math.max(minLabelOffset, labelOffset - 8);
-            } else if (overlaps && labelOffset < maxLabelOffset) {
-              labelOffset = Math.min(maxLabelOffset, labelOffset + 16);
-            } else {
-              break;
-            }
-
-            lx = x + labelOffset * Math.sin(angle);
-            ly = y + labelOffset * Math.cos(angle);
-            labelRect = makeLabelRect(lx, ly, textWidth, textHeight, textAlign, textBaseline);
-            if (++attempts > 10) break;
-          }
-          placedLabels.push(labelRect);
-
-          const lineX = x + 12 * Math.sin(angle);
-          const lineY = y + 12 * Math.cos(angle);
-
-          const drawPolygon = (sides, radius) => {
-            ctx.beginPath();
-            for (let i = 0; i < sides; i++) {
-              const angleOffset = Math.PI / 2 + Math.PI * 2 * i / sides;
-              const px = x + Math.cos(angleOffset) * radius;
-              const py = y - Math.sin(angleOffset) * radius;
-              if (i === 0) ctx.moveTo(px, py);
-              else ctx.lineTo(px, py);
-            }
-            ctx.closePath();
-            ctx.fill();
-          };
-
-          const drawMarkerShape = () => {
-            ctx.fillStyle = p.color;
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = p.color;
-            if (p.type === 'sun') {
-              drawPolygon(8, markerRadius + 3);
-            } else if (p.type === 'moon') {
-              drawPolygon(6, markerRadius + 2);
-            } else if (p.type === 'comet') {
-              const size = markerRadius + 5;
-              ctx.beginPath();
-              ctx.moveTo(x, y - size);
-              ctx.lineTo(x + size, y + size);
-              ctx.lineTo(x - size, y + size);
-              ctx.closePath();
-              ctx.fill();
-            } else if (p.type === 'asteroid') {
-              const size = markerRadius + 1.5;
-              ctx.beginPath();
-              ctx.rect(x - size, y - size, size * 2, size * 2);
-              ctx.fill();
-            } else {
-              ctx.beginPath();
-              ctx.arc(x, y, markerRadius, 0, Math.PI * 2);
-              ctx.fill();
-            }
-            ctx.shadowBlur = 0;
-          };
-
-          drawMarkerShape();
-
-          ctx.strokeStyle = '#444';
+          ctx.strokeStyle = 'rgba(80,80,80,0.28)';
           ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.moveTo(x, y);
-          ctx.lineTo(lineX, lineY);
-          ctx.lineTo(lx, ly);
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(rx, ry);
           ctx.stroke();
 
-          ctx.fillStyle = p.color;
-          ctx.textAlign = textAlign;
-          ctx.textBaseline = textBaseline;
-          ctx.fillText(labelText, lx, ly);
+          const tickIn = 5, tickOut = 5;
+          ctx.strokeStyle = b.p.color;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(cx + (planetRing - tickIn) * sinA, cy + (planetRing - tickIn) * cosA);
+          ctx.lineTo(cx + (planetRing + tickOut) * sinA, cy + (planetRing + tickOut) * cosA);
+          ctx.stroke();
         }
+
+        // ─────────────────────────────────────────────────────────────
+        // EARTH globe (drawn after the ring/lines so it sits on top)
+        // ─────────────────────────────────────────────────────────────
+        const earthGradient = ctx.createRadialGradient(cx - 6, earthCy - 6, 4, cx, earthCy, earthR);
+        earthGradient.addColorStop(0, '#7fcfff');
+        earthGradient.addColorStop(0.6, '#1e88e5');
+        earthGradient.addColorStop(1, '#0d47a1');
+        ctx.fillStyle = earthGradient;
+        ctx.beginPath();
+        ctx.arc(cx, earthCy, earthR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#004d40';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.fillStyle = '#2e7d32';
+        ctx.beginPath();
+        ctx.arc(cx - 6, earthCy - 2, 6, 0.8, 2.4);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(cx + 4, earthCy + 4, 5, 3.5, 5.2);
+        ctx.fill();
+
+        // Pass 3: build positions and marker sizes for all bodies.
+        const drawList = [];
+        const hitAreas = [];
+        for (const b of bodyAngles) {
+          let x, y, markerRadius;
+          if (b.p.type === 'moon') {
+            // Moon is an exception — orbits the chart center (which
+            // represents Earth) along its azimuth, independent of the
+            // Earth globe's vertical latitude/tilt shift.
+            x = cx + moonOffsetR * Math.sin(b.angle);
+            y = cy + moonOffsetR * Math.cos(b.angle);
+            markerRadius = 13;
+          } else {
+            // Every other body sits on its own azimuth ray from the
+            // chart center at a radius driven by its current distance
+            // to the Sun.
+            const r = auToPx(b.auFromSun);
+            x = cx + r * Math.sin(b.angle);
+            y = cy + r * Math.cos(b.angle);
+            if (b.p.type === 'sun') markerRadius = 16;
+            else if (b.p.type === 'asteroid') markerRadius = 5;
+            else if (b.p.type === 'comet') markerRadius = 8;
+            else markerRadius = 7;
+          }
+          drawList.push({ p: b.p, x, y, markerRadius });
+          hitAreas.push({ name: b.p.name, x, y, r: markerRadius + 4 });
+        }
+
+        // Pass 4: draw markers (planets first, then Moon, then Sun on top).
+        const drawOrder = drawList.slice().sort((a, b) => {
+          const rank = (t) => t === 'sun' ? 2 : t === 'moon' ? 1 : 0;
+          return rank(a.p.type) - rank(b.p.type);
+        });
+
+        const drawPolygonAt = (x, y, sides, r) => {
+          ctx.beginPath();
+          for (let i = 0; i < sides; i++) {
+            const a = Math.PI / 2 + Math.PI * 2 * i / sides;
+            const px = x + Math.cos(a) * r;
+            const py = y - Math.sin(a) * r;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.closePath();
+          ctx.fill();
+        };
+
+        for (const item of drawOrder) {
+          const { p, x, y, markerRadius } = item;
+          ctx.fillStyle = p.color;
+          ctx.shadowBlur = p.type === 'sun' ? 25 : 15;
+          ctx.shadowColor = p.color;
+          if (p.type === 'sun') {
+            drawPolygonAt(x, y, 12, markerRadius);
+          } else if (p.type === 'moon') {
+            drawPolygonAt(x, y, 6, markerRadius);
+          } else if (p.type === 'comet') {
+            const size = markerRadius + 4;
+            ctx.beginPath();
+            ctx.moveTo(x, y - size);
+            ctx.lineTo(x + size, y + size);
+            ctx.lineTo(x - size, y + size);
+            ctx.closePath();
+            ctx.fill();
+          } else if (p.type === 'asteroid') {
+            const size = markerRadius + 1;
+            ctx.beginPath();
+            ctx.rect(x - size, y - size, size * 2, size * 2);
+            ctx.fill();
+          } else {
+            ctx.beginPath();
+            ctx.arc(x, y, markerRadius, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.shadowBlur = 0;
+        }
+
+        // Permanent name labels. Each label is offset radially outward
+        // from the chart center, away from where the body sits, and
+        // drawn with a white halo so it stays readable over markers,
+        // ring lines, and other labels.
+        ctx.font = 'bold 11px Arial';
+        ctx.lineJoin = 'round';
+        for (const item of drawOrder) {
+          const { p, x, y, markerRadius } = item;
+          const dx = x - cx;
+          const dy = y - cy;
+          const d = Math.hypot(dx, dy) || 1;
+          const ux = dx / d;
+          const uy = dy / d;
+          const offset = markerRadius + 6;
+          const lx = x + offset * ux;
+          const ly = y + offset * uy;
+          ctx.textAlign = ux > 0.3 ? 'left' : (ux < -0.3 ? 'right' : 'center');
+          ctx.textBaseline = uy > 0.3 ? 'top' : (uy < -0.3 ? 'bottom' : 'middle');
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+          ctx.strokeText(p.name, lx, ly);
+          ctx.fillStyle = '#222';
+          ctx.fillText(p.name, lx, ly);
+        }
+
+        // Stash hit areas for the hover-tooltip handler installed on load.
+        window.__chartHitAreas = hitAreas;
 
         swe.close();
       } catch (err) {
@@ -597,6 +788,36 @@
 
     window.updateChart = updateChart;
     window.setToNow = setToNow;
+
+    // ─── Clock Mode ──────────────────────────────────────────────
+    // Toggling on snaps the date/time to "now" and re-syncs every
+    // 60 seconds. Date/Time spinners are visually locked while on.
+    // Latitude and Timezone stay editable. Starts OFF, not persisted.
+    let _clockModeIntervalId = null;
+    function setClockMode(on) {
+      const btn = document.getElementById('clockModeBtn');
+      if (on) {
+        if (!_clockModeIntervalId) {
+          _clockModeIntervalId = setInterval(() => {
+            try { setToNow(); } catch (e) { console.warn('Clock Mode tick failed', e); }
+          }, 60000);
+        }
+        document.body.classList.add('clock-mode');
+        if (btn) { btn.textContent = 'Clock Mode: On'; btn.classList.add('active'); }
+        try { setToNow(); } catch (e) { console.warn('Clock Mode initial sync failed', e); }
+      } else {
+        if (_clockModeIntervalId) {
+          clearInterval(_clockModeIntervalId);
+          _clockModeIntervalId = null;
+        }
+        document.body.classList.remove('clock-mode');
+        if (btn) { btn.textContent = 'Clock Mode: Off'; btn.classList.remove('active'); }
+      }
+    }
+    function toggleClockMode() {
+      setClockMode(!_clockModeIntervalId);
+    }
+    window.toggleClockMode = toggleClockMode;
 
     function populateTimezones() {
       const tz = document.getElementById('tzSelect');
@@ -802,10 +1023,54 @@
       bindNumberSpinner('minuteInput', 'minuteUp', 'minuteDown', { min: 0, max: 59, wrap: true, onChange: onTimeChange });
     }
 
+    function bindChartTooltip() {
+      const canvas = document.getElementById('chart');
+      const tooltip = document.getElementById('chartTooltip');
+      if (!canvas || !tooltip) return;
+
+      function findHit(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const mx = (e.clientX - rect.left) * scaleX;
+        const my = (e.clientY - rect.top) * scaleY;
+        const hits = window.__chartHitAreas || [];
+        let best = null;
+        let bestD = Infinity;
+        for (const h of hits) {
+          const d = Math.hypot(h.x - mx, h.y - my);
+          if (d <= h.r && d < bestD) { best = h; bestD = d; }
+        }
+        return best;
+      }
+
+      canvas.addEventListener('mousemove', (e) => {
+        const hit = findHit(e);
+        if (hit) {
+          const rect = canvas.getBoundingClientRect();
+          tooltip.textContent = hit.name;
+          tooltip.style.left = (e.clientX - rect.left) + 'px';
+          tooltip.style.top  = (e.clientY - rect.top) + 'px';
+          tooltip.style.display = 'block';
+          canvas.style.cursor = 'pointer';
+        } else {
+          tooltip.style.display = 'none';
+          canvas.style.cursor = 'default';
+        }
+      });
+      canvas.addEventListener('mouseleave', () => {
+        tooltip.style.display = 'none';
+        canvas.style.cursor = 'default';
+      });
+    }
+
     window.onload = () => {
       try {
         populateTimezones();
         bindAllSpinners();
+        bindChartTooltip();
+        const clockBtn = document.getElementById('clockModeBtn');
+        if (clockBtn) clockBtn.addEventListener('click', toggleClockMode);
 
         const now = new Date();
         const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v); };
